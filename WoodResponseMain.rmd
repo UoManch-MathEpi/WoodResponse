@@ -21,7 +21,7 @@ First generate the simulations and fit the GAM. Note that in the function gamTVR
 SummaryOutputRT <- data.frame(dates = seq(18353, 18353+365/2,1)) 
 
 set.seed(0) # To aid reproducibility
-repTS <- 10 # Reporting time step, i.e. time steps in numerical solution between observed data points
+simTS <- 10 # Number of time step int he simulation between reported data points
 pop <- 6*10^7 # Roughly the population of England, but the only key point is that it's large enough to avoid depletion of susceptibles
 R0 <- 2*log(2) # Approximately 1.4, but gives exact final size of 50%
 InfP <- 5 # Infectious period
@@ -32,12 +32,12 @@ duration <- 365*0.5 # Total length of simulation
 startdate <- as.Date(offset) 
 enddate <-  as.Date(offset+duration)
 
-    Sim <- seir_tau_tv(MaxTime=duration*repTS,dt=1/repTS, repro=R0,sig=1/LatP, gam= 1/InfP, N0=pop,
+    Sim <- seir_tau_tv(MaxTime=duration*simTS,dt=1/simTS, repro=R0,sig=1/LatP, gam= 1/InfP, N0=pop,
                        I0=InitI,E0=0,itp=2/3, frac=1/2, plt1 = F, plt2 = F )
-    Simdata <- cbind(offset-1+1:(floor(dim(Sim)[1]/repTS)),
-                     diff(cumsum(Sim$Ihat)[1+repTS*(0:floor(dim(Sim)[1]/repTS))]))
+    Simdata <- cbind(offset-1+1:(floor(dim(Sim)[1]/simTS)),
+                     diff(cumsum(Sim$Ihat)[1+simTS*(0:floor(dim(Sim)[1]/simTS))]))
 
-  for(i in c(2,4,8,12,16,20,24,32,48, floor(dim(Sim)[1]/repTS)-120)){  
+  for(i in c(2,4,8,12,16,20,24,32,48, floor(dim(Sim)[1]/simTS)-120)){  
     interventdate <- 120
     tvrout <- gamTVRpred(data=Simdata[1:(interventdate+i),], para=c(Simdata[1,2]*InfP,pop, InfP,LatP), 
                        keydates = data.frame(start=startdate+interventdate, end=min( enddate)), simulatorR=R0,plt=TRUE,
