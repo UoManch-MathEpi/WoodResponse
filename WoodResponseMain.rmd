@@ -1,0 +1,75 @@
+---
+title: "Response to RSS paper Wood et al. built on Reproduction number calculations with GAM"
+author: "Ian Hall"
+date: "2025-06-04"
+output: html_document
+---
+
+This file is an excerpt from the code needed to create the figures from Pang *et al* 2024 [Pang](https://doi.org/10.1098/rsif.2024.0518).
+
+First, load packages and bespoke functions from source file:
+
+```{r load, warning=FALSE, message=FALSE}
+source('DoubleTimeandReproFunctionsv2.R')
+```
+
+The key function is gamTVRpred which assumes SEIR or SIS model structure with time varying $\beta$ and takes arguments (default if not user-specified): \* dat, a data frame or matrix with first column of time values and second column of case incidence at those times. \* pval=5, the desired alpha value, represented as a %, for the (two sided) confidence interval. \* plt=TRUE, generate plots of results \* pltgr=FALSE, also plot growth rates on separate plot. \* wrtfile=FALSE, write weekday terms to separate file. \* type='SEIR', either SIS or SEIR at this stage of development. \* para=c(300, 450000, 5,3), vector of Epidemiological Model paramters, in order: 1) initial number of infectious cases, 2) population at risk, 3) Infectious Period, 4) Latent Period=3. Notes - 1) is a transient and not sensitive over time, 4) is not needed in SIS model and best set to 0. \* EEwindow=2*(para[3]+para[4]), i.e. twice an approximate generation time, if this is set to 0 then EpiEstim is not used.* FigTitle='', a string of text giving title for output figure. \* KeyDates, dates of background annotation on figures (as a data frame) to give context to possible change points in transmission.
+
+First generate the simulations and fit the GAM. Note that in the function gamTVRpred
+
+```{r}
+SummaryOutputRT <- data.frame(dates = seq(18353, 18353+365/2,1)) 
+
+set.seed(0) # To aid reproducibility
+repTS <- 10 # Reporting time step, i.e. time steps in numerical solution between observed data points
+pop <- 6*10^7 # Roughly the population of England, but the only key point is that it's large enough to avoid depletion of susceptibles
+R0 <- 2*log(2) # Approximately 1.4, but gives exact final size of 50%
+InfP <- 5 # Infectious period
+LatP <- 3 # Latent period
+InitI <- 10^2 # Initial population
+offset <- 18353 # To reach the right starting date
+duration <- 365*0.5 # Total length of simulation
+startdate <- as.Date(offset) 
+enddate <-  as.Date(offset+duration)
+
+    Sim <- seir_tau_tv(MaxTime=duration*repTS,dt=1/repTS, repro=R0,sig=1/LatP, gam= 1/InfP, N0=pop,
+                       I0=InitI,E0=0,itp=2/3, frac=1/2, plt1 = F, plt2 = F )
+    Simdata <- cbind(offset-1+1:(floor(dim(Sim)[1]/repTS)),
+                     diff(cumsum(Sim$Ihat)[1+repTS*(0:floor(dim(Sim)[1]/repTS))]))
+
+  for(i in c(2,4,8,12,16,20,24,32,48, floor(dim(Sim)[1]/repTS)-120)){  
+    interventdate <- 120
+    tvrout <- gamTVRpred(data=Simdata[1:(interventdate+i),], para=c(Simdata[1,2]*InfP,pop, InfP,LatP), 
+                       keydates = data.frame(start=startdate+interventdate, end=min( enddate)), simulatorR=R0,plt=TRUE,
+                       figtitle = paste('Simulation with 50% reduction in R0=',round(R0,2),' on ', startdate+interventdate, sep=''))
+
+  output <- cbind(tvrout$Date, tvrout$REfullmed,tvrout$REfullup,tvrout$REfulllow,tvrout$RCfullmed,tvrout$RCfullup,tvrout$RCfulllow)
+
+       output <- data.frame(output)
+    colnames(output) <- c('dates', paste('RET', i,sep=''), paste('RETup', i,sep=''), paste('RETlow', i,sep=''), 
+paste('RCT', i,sep=''), paste('RCTup', i,sep=''), paste('RCTlow', i,sep=''))
+    SummaryOutputRT <- Reduce(function(x, y) merge(x, y, all=TRUE), list(SummaryOutputRT, output))
+}
+```
+
+Then plot the R estimates as more data becomes available all on the same plot:
+
+```{r}
+p4 <- ggplot(data=SummaryOutputRT)+
+  geom_vline(xintercept=as.Date(18353+121), color='white', lwd=2)+
+  geom_segment(x=as.Date(SummaryOutputRT$dates[1]), xend =as.Date(18353+121), y=2*log(2), colour='black')+
+  geom_segment(xend=as.Date(18353+121+90), x =as.Date(18353+121), y=log(2), colour='black') +
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow24, ymax=RCTup24), fill='magenta', alpha=0.2)+ 
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow16, ymax=RCTup16), fill='purple', alpha=0.2)+ 
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow12, ymax=RCTup12), fill='green', alpha=0.2)+
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow8, ymax=RCTup8), fill='blue', alpha=0.2)+
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow4, ymax=RCTup4), fill='red', alpha=0.2)+ 
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow2, ymax=RCTup2), fill='black', alpha=0.5)+
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow32, ymax=RCTup32), fill='orange', alpha=0.2)+ 
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow48, ymax=RCTup48), fill='yellow', alpha=0.4)+
+            geom_ribbon(aes(x=as.Date(dates), ymin=RCTlow62, ymax=RCTup62), fill='grey', alpha=0.5)+
+            labs(x='Date')+ ylab(expression(R ~ estimate))+
+  coord_cartesian(ylim=c(0,1.6), xlim = c(as.Date(18353+61),as.Date(18353+213-31)))
+print(p4)
+
+```
